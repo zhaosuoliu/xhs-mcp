@@ -11,7 +11,7 @@ import { serve } from '@hono/node-server';
 import { createMcpServer } from './server.js';
 import { initDatabase } from './db/index.js';
 import { getAccountPool } from './core/account-pool.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { config } from './core/config.js';
 
@@ -30,11 +30,15 @@ export async function startHttpServer(port: number = config.server.port) {
    * Create a new MCP server and transport for each request.
    * In stateless HTTP mode, each request is independent.
    */
-  const getOrCreateServer = async (): Promise<{ server: Server; transport: StreamableHTTPServerTransport }> => {
+  const getOrCreateServer = async (): Promise<{
+    server: Server;
+    transport: WebStandardStreamableHTTPServerTransport;
+  }> => {
     // For stateless mode, we need a fresh transport per request
     // but can potentially reuse the server logic
-    const transport = new StreamableHTTPServerTransport({
+    const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // Stateless mode
+      enableJsonResponse: true, // 纯 JSON 响应，请求结束即可安全关闭 transport
     });
 
     // Create server if not exists, or create new one for each request in stateless mode
@@ -47,6 +51,15 @@ export async function startHttpServer(port: number = config.server.port) {
 
   const app = new Hono();
 
+  // 未被路由捕获的异常统一记录，否则只返回无日志的 500
+  app.onError((err, c) => {
+    console.error('Unhandled HTTP error:', err);
+    return c.json(
+      { jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null },
+      500,
+    );
+  });
+
   // Enable CORS for all origins
   app.use(
     '*',
@@ -56,78 +69,18 @@ export async function startHttpServer(port: number = config.server.port) {
     }),
   );
 
-  // MCP endpoint using StreamableHTTPServerTransport
+  // MCP endpoint using WebStandardStreamableHTTPServerTransport
   app.post('/mcp', async (c) => {
     let server: Server | null = null;
-    let transport: StreamableHTTPServerTransport | null = null;
+    let transport: WebStandardStreamableHTTPServerTransport | null = null;
 
     try {
       const result = await getOrCreateServer();
       server = result.server;
       transport = result.transport;
 
-      // Get the raw request body
-      const body = await c.req.json();
-
-      // Create a mock Express-like request/response for the transport
-      // StreamableHTTPServerTransport expects Express-style req/res
-      const headers: Record<string, string> = {};
-      c.req.raw.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
-
-      const mockReq = {
-        headers,
-        body,
-      };
-
-      let responseBody: any = null;
-      let responseHeaders: Record<string, string> = {};
-      let responseStatus = 200;
-
-      const mockRes = {
-        writeHead: (status: number, headers?: Record<string, string>) => {
-          responseStatus = status;
-          if (headers) {
-            responseHeaders = { ...responseHeaders, ...headers };
-          }
-          return mockRes;
-        },
-        setHeader: (name: string, value: string) => {
-          responseHeaders[name] = value;
-          return mockRes;
-        },
-        getHeader: (name: string) => responseHeaders[name],
-        write: (chunk: string | Buffer) => {
-          if (responseBody === null) {
-            responseBody = '';
-          }
-          responseBody += typeof chunk === 'string' ? chunk : chunk.toString();
-          return true;
-        },
-        end: (data?: string | Buffer) => {
-          if (data) {
-            if (responseBody === null) {
-              responseBody = '';
-            }
-            responseBody += typeof data === 'string' ? data : data.toString();
-          }
-          return mockRes;
-        },
-        on: () => mockRes,
-        headersSent: false,
-        flushHeaders: () => {},
-      };
-
-      await transport.handleRequest(mockReq as any, mockRes as any, body);
-
-      // Build response
-      const response = new Response(responseBody, {
-        status: responseStatus,
-        headers: responseHeaders,
-      });
-
-      return response;
+      // Web 标准传输直接消费 fetch Request、返回 fetch Response
+      return await transport.handleRequest(c.req.raw);
     } catch (error) {
       console.error('Error handling MCP request:', error);
       return c.json(
