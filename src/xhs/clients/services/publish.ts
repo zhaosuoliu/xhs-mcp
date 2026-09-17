@@ -170,7 +170,10 @@ export class PublishService {
 
       // Fill content
       log.debug('Filling content...');
-      const contentEditor = await page.$(PUBLISH_SELECTORS.contentEditor);
+      // 新版发布页正文编辑器已从 quill(.ql-editor) 换成 tiptap，保留旧选择器兜底
+      const contentEditor =
+        (await page.$(PUBLISH_SELECTORS.contentEditor)) ||
+        (await page.$('div.tiptap.ProseMirror, div[contenteditable="true"]'));
       if (contentEditor) {
         await contentEditor.click();
         await page.keyboard.type(params.content);
@@ -222,7 +225,7 @@ export class PublishService {
 
       // Click publish button
       log.info('Clicking publish button...');
-      const publishBtn = await page.$(PUBLISH_SELECTORS.publishBtn);
+      const publishBtn = (await page.$(PUBLISH_SELECTORS.publishBtn)) || (await this.resolveXhsPublishBtn(page));
       if (!publishBtn) {
         log.error('Publish button not found');
         return { success: false, error: 'Publish button not found' };
@@ -234,21 +237,20 @@ export class PublishService {
       // Wait for publish to complete
       await sleep(3000);
 
-      // Check if publish succeeded
-      const resultUrl = page.url();
-      log.debug('Result URL', { url: resultUrl });
-
-      if (resultUrl.includes('success') || resultUrl.includes('publish')) {
-        // Try to extract note ID from URL
-        const noteIdMatch = resultUrl.match(/note\/([a-zA-Z0-9]+)/);
-        log.info('Publish successful', { noteId: noteIdMatch?.[1] });
-        return {
-          success: true,
-          noteId: noteIdMatch?.[1],
-        };
+      // 等待成功页确认，不能仅凭点击就报成功
+      const publishOk = await page
+        .waitForFunction(
+          () => location.href.includes('/publish/success') || document.body.innerText.includes('发布成功'),
+          null,
+          { timeout: 15000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!publishOk) {
+        return { success: false, error: 'Publish not confirmed (no success page)' };
       }
 
-      log.info('Publish completed');
+      log.info('Publish successful');
       return { success: true };
     } catch (error) {
       log.error('Publish failed', { error: error instanceof Error ? error.message : String(error) });
@@ -262,6 +264,24 @@ export class PublishService {
       await page.close();
       log.debug('Browser page closed');
     }
+  }
+
+  /**
+   * 新版发布页底部是 closed shadow DOM 的 <xhs-publish-btn>（左"暂存离开"右"发布"），
+   * 内部按钮无法用选择器命中：等待 submit-disabled 属性解除（表示上传处理完成）后，
+   * 按坐标点击右侧的红色"发布"按钮。
+   */
+  private async resolveXhsPublishBtn(page: Page): Promise<{ click: () => Promise<void> } | null> {
+    const xpb = await page.$('xhs-publish-btn');
+    if (!xpb) return null;
+    for (let i = 0; i < 90; i++) {
+      const disabled = await xpb.getAttribute('submit-disabled');
+      if (disabled !== 'true') break;
+      await sleep(2000);
+    }
+    const box = await xpb.boundingBox();
+    if (!box) return null;
+    return { click: () => page.mouse.click(box.x + box.width * 0.58, box.y + box.height / 2) };
   }
 
   /**
@@ -381,11 +401,14 @@ export class PublishService {
       await page.waitForLoadState('networkidle').catch(() => {});
       await sleep(2000);
 
-      // 点击"上传视频"标签
-      const videoTab = await page.$(PUBLISH_SELECTORS.uploadVideoTab);
-      if (videoTab) {
-        await videoTab.click();
-        await sleep(1000);
+      // 点击"上传视频"标签（默认 Tab 已是"上传视频"时再点击会失焦，先检查激活状态）
+      const activeVideoTab = await page.$('div.creator-tab.active:has-text("上传视频")');
+      if (!activeVideoTab) {
+        const videoTab = await page.$(PUBLISH_SELECTORS.uploadVideoTab);
+        if (videoTab) {
+          await videoTab.click({ timeout: 5000 }).catch(() => {});
+          await sleep(1000);
+        }
       }
 
       // 上传视频
@@ -403,6 +426,13 @@ export class PublishService {
       });
       await sleep(2000);
 
+      // 上传完成后会弹出封面引导弹窗，挡住表单，需要先关闭
+      const coverGuide = await page.$('button.pk-cover-guide-confirm');
+      if (coverGuide) {
+        await coverGuide.click().catch(() => {});
+        await sleep(500);
+      }
+
       // 如果提供了封面图，上传封面
       if (params.coverPath) {
         const coverInput = await page.$('.cover-upload input, [class*="cover"] input[type="file"]');
@@ -418,8 +448,10 @@ export class PublishService {
         await titleInput.fill(params.title);
       }
 
-      // 填写内容
-      const contentEditor = await page.$(PUBLISH_SELECTORS.contentEditor);
+      // 填写内容（新版编辑器为 tiptap，保留旧选择器兜底）
+      const contentEditor =
+        (await page.$(PUBLISH_SELECTORS.contentEditor)) ||
+        (await page.$('div.tiptap.ProseMirror, div[contenteditable="true"]'));
       if (contentEditor) {
         await contentEditor.click();
         await page.keyboard.type(params.content);
@@ -443,13 +475,26 @@ export class PublishService {
       }
 
       // 点击发布
-      const publishBtn = await page.$(PUBLISH_SELECTORS.publishBtn);
+      const publishBtn = (await page.$(PUBLISH_SELECTORS.publishBtn)) || (await this.resolveXhsPublishBtn(page));
       if (!publishBtn) {
         return { success: false, error: 'Publish button not found' };
       }
 
       await publishBtn.click();
       await sleep(3000);
+
+      // 等待成功页确认，不能仅凭点击就报成功
+      const publishOk = await page
+        .waitForFunction(
+          () => location.href.includes('/publish/success') || document.body.innerText.includes('发布成功'),
+          null,
+          { timeout: 15000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!publishOk) {
+        return { success: false, error: 'Publish not confirmed (no success page)' };
+      }
 
       return { success: true };
     } catch (error) {

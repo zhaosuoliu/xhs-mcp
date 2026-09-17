@@ -226,7 +226,16 @@ export class InteractService {
       }
 
       await submitBtn.click();
-      await sleep(1000);
+      // 等待"评论成功" toast 确认，过早关闭页面会导致评论请求被中断
+      let commentOk = false;
+      for (let i = 0; i < 10; i++) {
+        await sleep(1000);
+        commentOk = await page.evaluate(() => document.body.innerText.includes('评论成功'));
+        if (commentOk) break;
+      }
+      if (!commentOk) {
+        return { success: false, error: 'Comment not confirmed (no success toast)' };
+      }
 
       return { success: true };
     } catch (error) {
@@ -294,12 +303,9 @@ export class InteractService {
         return { success: false, error: 'Reply input not found' };
       }
 
-      // 使用 evaluate 直接设置内容（模拟 rod 的 Input 方法）
-      await commentInput.evaluate((el: HTMLElement, text: string) => {
-        el.textContent = text;
-        // 触发 input 事件让 Vue 检测到变化
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }, content);
+      // 必须用真实键盘输入：textContent 直接赋值 Vue 检测不到，会发出空回复
+      await commentInput.click();
+      await page.keyboard.type(content);
       await sleep(500);
 
       // 提交回复（使用与 reference project 相同的选择器）
@@ -309,7 +315,16 @@ export class InteractService {
       }
 
       await submitBtn.click();
-      await sleep(2000); // 等待 2 秒与 reference project 一致
+      // 等待"评论成功" toast 确认，过早关闭页面会导致回复请求被中断
+      let replyOk = false;
+      for (let i = 0; i < 10; i++) {
+        await sleep(1000);
+        replyOk = await page.evaluate(() => document.body.innerText.includes('评论成功'));
+        if (replyOk) break;
+      }
+      if (!replyOk) {
+        return { success: false, error: 'Reply not confirmed (no success toast)' };
+      }
 
       return { success: true };
     } catch (error) {
