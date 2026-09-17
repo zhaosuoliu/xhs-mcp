@@ -7,6 +7,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { serve } from '@hono/node-server';
 import { createMcpServer } from './server.js';
 import { initDatabase } from './db/index.js';
 import { getAccountPool } from './core/account-pool.js';
@@ -212,11 +213,15 @@ export async function startHttpServer(port: number = config.server.port) {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  // Start Bun server
-  Bun.serve({
-    port,
-    fetch: app.fetch,
-  });
+  // Bun 运行时用 Bun.serve，Node 运行时用 @hono/node-server
+  if (typeof (globalThis as any).Bun !== 'undefined') {
+    (globalThis as any).Bun.serve({
+      port,
+      fetch: app.fetch,
+    });
+  } else {
+    serve({ fetch: app.fetch, port });
+  }
 
   console.error(`HTTP server running on http://localhost:${port}`);
 }
