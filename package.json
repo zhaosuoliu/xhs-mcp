@@ -65,8 +65,8 @@
     "hono": "^4.7.0",
     "jsonrepair": "^3.13.2",
     "liquidjs": "^10.24.0",
-    "patchright": "^1.57.0",
-    "patchright-core": "^1.57.0",
+    "patchright": "1.57.0",
+    "patchright-core": "1.57.0",
     "sharp": "^0.34.5",
     "zod": "^4.1.13"
   },
