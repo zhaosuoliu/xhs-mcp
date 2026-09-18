@@ -25,4 +25,5 @@ ENV XHS_MCP_DATA_DIR=/root/.xhs-mcp
 ENV GEMINI_API_KEY=unused
 
 EXPOSE 18060
-CMD ["xvfb-run", "-a", "--server-args=-screen 0 1920x1080x24", "node", "dist/index.js", "--http"]
+# xvfb-run 在容器内会静默卡住不执行命令，改为显式启动 Xvfb 后 exec node
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & export DISPLAY=:99 && exec node dist/index.js --http"]
