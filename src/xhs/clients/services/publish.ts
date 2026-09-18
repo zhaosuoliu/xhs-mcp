@@ -225,7 +225,9 @@ export class PublishService {
 
       // Click publish button
       log.info('Clicking publish button...');
-      const publishBtn = (await page.$(PUBLISH_SELECTORS.publishBtn)) || (await this.resolveXhsPublishBtn(page));
+      // 旧选择器可能命中"暂存离开"（同容器第一个按钮），必须优先走 shadow-root 精确解析
+      const publishBtn =
+        (await this.resolveXhsPublishBtn(page)) || (await page.$('div.publish-page-publish-btn button:has-text("发布"), button.publishBtn:has-text("发布")')) || (await page.$(PUBLISH_SELECTORS.publishBtn));
       if (!publishBtn) {
         log.error('Publish button not found');
         return { success: false, error: 'Publish button not found' };
@@ -313,7 +315,7 @@ export class PublishService {
     }
     // patchright 可穿透 closed shadow root：直接选中真正的"发布"按钮。
     // 坐标兜底曾误中左侧"暂存离开"（笔记被存成草稿并跳回首页，表现为"发布未确认"）
-    const inner = await xpb.$('button:has-text("发布")');
+    const inner = (await xpb.$('button:text-is("发布")')) || (await xpb.$('button:has-text("发布")'));
     if (inner) {
       log.info('Publish button resolved inside shadow root');
       return inner;
@@ -515,7 +517,9 @@ export class PublishService {
       }
 
       // 点击发布
-      const publishBtn = (await page.$(PUBLISH_SELECTORS.publishBtn)) || (await this.resolveXhsPublishBtn(page));
+      // 旧选择器可能命中"暂存离开"（同容器第一个按钮），必须优先走 shadow-root 精确解析
+      const publishBtn =
+        (await this.resolveXhsPublishBtn(page)) || (await page.$(PUBLISH_SELECTORS.publishBtn));
       if (!publishBtn) {
         return { success: false, error: 'Publish button not found' };
       }
