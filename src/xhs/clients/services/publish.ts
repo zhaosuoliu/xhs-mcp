@@ -311,9 +311,17 @@ export class PublishService {
       if (disabled !== 'true') break;
       await sleep(2000);
     }
+    // patchright 可穿透 closed shadow root：直接选中真正的"发布"按钮。
+    // 坐标兜底曾误中左侧"暂存离开"（笔记被存成草稿并跳回首页，表现为"发布未确认"）
+    const inner = await xpb.$('button:has-text("发布")');
+    if (inner) {
+      log.info('Publish button resolved inside shadow root');
+      return inner;
+    }
     const box = await xpb.boundingBox();
     if (!box) return null;
-    return { click: () => page.mouse.click(box.x + box.width * 0.58, box.y + box.height / 2) };
+    log.warn('Falling back to coordinate click on xhs-publish-btn');
+    return { click: () => page.mouse.click(box.x + box.width * 0.78, box.y + box.height / 2) };
   }
 
   /**
