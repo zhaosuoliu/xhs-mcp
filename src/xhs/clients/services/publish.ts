@@ -199,12 +199,22 @@ export class PublishService {
           await sleep(500);
 
           // Wait for and click tag suggestion
-          const suggestion = await page.$(`${PUBLISH_SELECTORS.topicContainer}:has-text("${tag}")`);
-          if (suggestion) {
-            await suggestion.click();
-            await sleep(300);
-          } else {
-            // Press space to confirm tag
+          // 优先选文本正好以 #tag 开头的联想项（避免 #重庆 命中"重庆狼队"）
+          const candidates = await page.$$(`${PUBLISH_SELECTORS.topicContainer}:has-text("${tag}")`);
+          let clicked = false;
+          for (const c of candidates) {
+            const t = ((await c.textContent()) ?? '').trim();
+            if (t === `#${tag}` || new RegExp(`^#?${tag}(\\s|\\d|$)`).test(t)) {
+              await c.click();
+              clicked = true;
+              break;
+            }
+          }
+          if (!clicked && candidates[0]) {
+            await candidates[0].click();
+            clicked = true;
+          }
+          if (!clicked) {
             await page.keyboard.press('Space');
           }
           await sleep(300);
@@ -226,8 +236,7 @@ export class PublishService {
       // Click publish button
       log.info('Clicking publish button...');
       // 旧选择器可能命中"暂存离开"（同容器第一个按钮），必须优先走 shadow-root 精确解析
-      const publishBtn =
-        (await this.resolveXhsPublishBtn(page)) || (await page.$('div.publish-page-publish-btn button:has-text("发布"), button.publishBtn:has-text("发布")')) || (await page.$(PUBLISH_SELECTORS.publishBtn));
+      const publishBtn = await this.resolveXhsPublishBtn(page);
       if (!publishBtn) {
         log.error('Publish button not found');
         return { success: false, error: 'Publish button not found' };
@@ -307,23 +316,27 @@ export class PublishService {
    */
   private async resolveXhsPublishBtn(page: Page): Promise<{ click: () => Promise<void> } | null> {
     const xpb = await page.$('xhs-publish-btn');
-    if (!xpb) return null;
-    for (let i = 0; i < 90; i++) {
-      const disabled = await xpb.getAttribute('submit-disabled');
-      if (disabled !== 'true') break;
-      await sleep(2000);
+    if (xpb) {
+      // 等上传/转码完成（submit-disabled 解除）再点发布
+      for (let i = 0; i < 90; i++) {
+        const disabled = await xpb.getAttribute('submit-disabled');
+        if (disabled !== 'true') break;
+        await sleep(2000);
+      }
     }
-    // patchright 可穿透 closed shadow root：直接选中真正的"发布"按钮。
-    // 坐标兜底曾误中左侧"暂存离开"（笔记被存成草稿并跳回首页，表现为"发布未确认"）
-    const inner = (await xpb.$('button:text-is("发布")')) || (await xpb.$('button:has-text("发布")'));
-    if (inner) {
-      log.info('Publish button resolved inside shadow root');
-      return inner;
+    // 底部操作栏的"暂存离开/发布"是普通 DOM 按钮（非 shadow root）：
+    // 遍历页面按钮精确取文本为"发布"的那个，避免误中"暂存离开"或"发布笔记"导航
+    for (const b of await page.$$('button')) {
+      const t = (await b.textContent())?.trim();
+      if (t === '发布') {
+        log.info('Publish button resolved by exact text');
+        return b;
+      }
     }
-    const box = await xpb.boundingBox();
+    const box = xpb ? await xpb.boundingBox() : null;
     if (!box) return null;
     log.warn('Falling back to coordinate click on xhs-publish-btn');
-    return { click: () => page.mouse.click(box.x + box.width * 0.78, box.y + box.height / 2) };
+    return { click: () => page.mouse.click(box.x + box.width * 0.58, box.y + box.height / 2) };
   }
 
   /**
@@ -506,10 +519,22 @@ export class PublishService {
         for (const tag of params.tags) {
           await page.keyboard.type(`#${tag}`);
           await sleep(500);
-          const suggestion = await page.$(`${PUBLISH_SELECTORS.topicContainer}:has-text("${tag}")`);
-          if (suggestion) {
-            await suggestion.click();
-          } else {
+          // 优先选文本正好以 #tag 开头的联想项（避免 #重庆 命中"重庆狼队"）
+          const candidates = await page.$$(`${PUBLISH_SELECTORS.topicContainer}:has-text("${tag}")`);
+          let clicked = false;
+          for (const c of candidates) {
+            const t = ((await c.textContent()) ?? '').trim();
+            if (t === `#${tag}` || new RegExp(`^#?${tag}(\\s|\\d|$)`).test(t)) {
+              await c.click();
+              clicked = true;
+              break;
+            }
+          }
+          if (!clicked && candidates[0]) {
+            await candidates[0].click();
+            clicked = true;
+          }
+          if (!clicked) {
             await page.keyboard.press('Space');
           }
           await sleep(300);
@@ -518,8 +543,7 @@ export class PublishService {
 
       // 点击发布
       // 旧选择器可能命中"暂存离开"（同容器第一个按钮），必须优先走 shadow-root 精确解析
-      const publishBtn =
-        (await this.resolveXhsPublishBtn(page)) || (await page.$(PUBLISH_SELECTORS.publishBtn));
+      const publishBtn = await this.resolveXhsPublishBtn(page);
       if (!publishBtn) {
         return { success: false, error: 'Publish button not found' };
       }
