@@ -247,7 +247,8 @@ export class PublishService {
         .then(() => true)
         .catch(() => false);
       if (!publishOk) {
-        return { success: false, error: 'Publish not confirmed (no success page)' };
+        const detail = await this.captureFailure(page, 'publish-image');
+        return { success: false, error: `Publish not confirmed (no success page).${detail}` };
       }
 
       log.info('Publish successful');
@@ -264,6 +265,37 @@ export class PublishService {
       await page.close();
       log.debug('Browser page closed');
     }
+  }
+
+  /**
+   * 发布确认失败时采集现场：URL、页面文本片段、UA，并截图到数据目录 debug/，
+   * 让失败原因可以直接从任务结果里读到。
+   */
+  private async captureFailure(page: Page, kind: string): Promise<string> {
+    let detail = '';
+    try {
+      const info = await page.evaluate(() => ({
+        url: location.href,
+        ua: navigator.userAgent,
+        text: document.body.innerText.replace(/\s+/g, ' ').slice(0, 400),
+      }));
+      detail = ` url=${info.url} ua=${info.ua} text=${info.text}`;
+    } catch (e) {
+      detail = ` (capture failed: ${e instanceof Error ? e.message : String(e)})`;
+    }
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const dir = path.join(config.data.dir, 'debug');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${kind}-${Date.now()}.png`);
+      await page.screenshot({ path: file, fullPage: false });
+      detail += ` screenshot=${file}`;
+    } catch {
+      // 截图失败不影响错误返回
+    }
+    log.error('Publish not confirmed', { kind, detail });
+    return detail;
   }
 
   /**
@@ -493,7 +525,8 @@ export class PublishService {
         .then(() => true)
         .catch(() => false);
       if (!publishOk) {
-        return { success: false, error: 'Publish not confirmed (no success page)' };
+        const detail = await this.captureFailure(page, 'publish-video');
+        return { success: false, error: `Publish not confirmed (no success page).${detail}` };
       }
 
       return { success: true };
