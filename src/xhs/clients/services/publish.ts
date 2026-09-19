@@ -288,30 +288,45 @@ export class PublishService {
    * 点击"添加地点"下拉 → 输入关键词 → 选第一个匹配的联想项。
    */
   private async addLocation(page: Page, location: string): Promise<boolean> {
+    const key = location.split(/[（(]/)[0];
     try {
-      const trigger = await page.$('div:has-text("添加地点") input, :text("添加地点")');
-      if (!trigger) {
+      // "添加地点"是内容设置区的下拉组件，点它的可见文本展开
+      const trigger = page.getByText('添加地点', { exact: true }).first();
+      if ((await trigger.count()) === 0) {
         log.warn('addLocation: trigger not found');
         await this.captureLocationDebug(page);
         return false;
       }
+      await trigger.scrollIntoViewIfNeeded();
       await trigger.click();
       await sleep(1000);
       await page.keyboard.type(location);
       await sleep(2500);
-      // 联想项：取包含关键词首段、且不是触发器本身的可点击项
-      const key = location.split(/[（(]/)[0];
+      // 优先点匹配的联想项
       const candidates = await page.$$(`div[class*="option"]:has-text("${key}"), li:has-text("${key}"), div[class*="item"]:has-text("${key}")`);
+      let clicked = false;
       for (const c of candidates) {
         const t = ((await c.textContent()) ?? '').trim();
         if (t && t.length < 80 && t.includes(key) && !t.includes('添加地点')) {
-          await c.click();
-          await sleep(800);
-          log.info('addLocation: selected', { text: t.slice(0, 50) });
-          return true;
+          await c.click({ timeout: 5000 }).catch(() => {});
+          clicked = true;
+          break;
         }
       }
-      log.warn('addLocation: no suggestion matched', { location });
+      if (!clicked) {
+        // 兜底：下拉里用键盘选第一项
+        await page.keyboard.press('ArrowDown');
+        await sleep(300);
+        await page.keyboard.press('Enter');
+      }
+      await sleep(1200);
+      // 最终校验：选中后组件会把地点名渲染成页面文本（输入框的值不算 innerText）
+      const ok = await page.evaluate((k) => document.body.innerText.includes(k), key);
+      if (ok) {
+        log.info('addLocation: confirmed', { location });
+        return true;
+      }
+      log.warn('addLocation: not confirmed after selection', { location });
       await this.captureLocationDebug(page);
       return false;
     } catch (e) {
