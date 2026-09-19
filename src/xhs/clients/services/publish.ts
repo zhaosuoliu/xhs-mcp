@@ -5,7 +5,7 @@
  */
 
 import { Page } from 'patchright';
-import { PublishContentParams, PublishVideoParams, PublishResult } from '../../types.js';
+import { PublishContentParams, PublishVideoParams, PublishResult, LocationPoi } from '../../types.js';
 import { sleep, resolveImagePaths, isHttpUrl } from '../../utils/index.js';
 import { config } from '../../../core/config.js';
 import { BrowserContextManager, log } from '../context.js';
@@ -201,7 +201,7 @@ export class PublishService {
       }
 
       // 添加地点：用户指定了地点则必须成功，失败中止发布
-      if (params.location && !(await this.addLocation(page, params.location))) {
+      if (params.location && !(await this.addLocation(page, params.location, params.locationAddress))) {
         return { success: false, error: `添加地点"${params.location}"失败，已中止发布` };
       }
 
@@ -262,10 +262,50 @@ export class PublishService {
   }
 
   /**
-   * 添加地点。用户指定了地点就必须成功，否则发布应中止（调用方负责判断返回值）。
-   * 点击"添加地点"下拉 → 输入关键词 → 选第一个匹配的联想项。
+   * 地点联想搜索：直调创作平台官方 POI 接口（仅验登录态 cookie），与发布页下拉数据完全一致。
+   * 不开页面，走持久化上下文的 request，单次 <1s。
    */
-  private async addLocation(page: Page, location: string): Promise<boolean> {
+  async searchLocation(keyword: string, size = 20): Promise<LocationPoi[]> {
+    if (!this.ctx.options.state) {
+      throw new Error('Not logged in. Please use xhs_add_account first.');
+    }
+    const context = await this.ctx.ensureContext();
+    const res = await context.request.post(URLS.POI_SEARCH, {
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://creator.xiaohongshu.com',
+        referer: 'https://creator.xiaohongshu.com/',
+      },
+      data: { latitude: 0, longitude: 0, keyword, page: 1, size, source: 'WEB', type: 3 },
+    });
+    if (res.status() !== 200) {
+      throw new Error(`POI search HTTP ${res.status()}`);
+    }
+    const json = (await res.json()) as {
+      code: number;
+      msg?: string;
+      data?: { poi_list?: Array<Record<string, unknown>> };
+    };
+    if (json.code !== 0) {
+      throw new Error(`POI search failed: ${json.msg ?? `code ${json.code}`}`);
+    }
+    const list = json.data?.poi_list ?? [];
+    log.info('searchLocation done', { keyword, count: list.length });
+    return list.map((p) => ({
+      name: String(p.name ?? ''),
+      address: String(p.address ?? ''),
+      fullAddress: String(p.full_address ?? ''),
+      cityName: String(p.city_name ?? ''),
+      poiId: String(p.poi_id ?? ''),
+    }));
+  }
+
+  /**
+   * 添加地点。用户指定了地点就必须成功，否则发布应中止（调用方负责判断返回值）。
+   * 点击"添加地点"下拉 → 输入关键词 → 选匹配的联想项。
+   * 匹配优先级：完整名称+地址 → 完整名称 → 括号前缀兜底（兼容自由输入的模糊地点）。
+   */
+  private async addLocation(page: Page, location: string, address?: string): Promise<boolean> {
     const key = location.split(/[（(]/)[0];
     try {
       // "添加地点"是内容设置区的下拉组件，点它的可见文本展开
@@ -280,15 +320,22 @@ export class PublishService {
       await sleep(1000);
       await page.keyboard.type(location);
       await sleep(2500);
-      // 优先点匹配的联想项
       const candidates = await page.$$(`div[class*="option"]:has-text("${key}"), li:has-text("${key}"), div[class*="item"]:has-text("${key}")`);
+      // 每档匹配一遍：全名+地址 → 全名 → 前缀，找到即点
+      const matchers: Array<(t: string) => boolean> = [
+        ...(address ? [(t: string) => t.includes(location) && t.includes(address.slice(0, 10))] : []),
+        (t: string) => t.includes(location),
+        (t: string) => t.includes(key),
+      ];
       let clicked = false;
-      for (const c of candidates) {
-        const t = ((await c.textContent()) ?? '').trim();
-        if (t && t.length < 80 && t.includes(key) && !t.includes('添加地点')) {
-          await c.click({ timeout: 5000 }).catch(() => {});
-          clicked = true;
-          break;
+      outer: for (const match of matchers) {
+        for (const c of candidates) {
+          const t = ((await c.textContent()) ?? '').trim();
+          if (t && t.length < 120 && match(t) && !t.includes('添加地点')) {
+            await c.click({ timeout: 5000 }).catch(() => {});
+            clicked = true;
+            break outer;
+          }
         }
       }
       if (!clicked) {
@@ -571,7 +618,7 @@ export class PublishService {
       }
 
       // 添加地点：用户指定了地点则必须成功，失败中止发布
-      if (params.location && !(await this.addLocation(page, params.location))) {
+      if (params.location && !(await this.addLocation(page, params.location, params.locationAddress))) {
         return { success: false, error: `添加地点"${params.location}"失败，已中止发布` };
       }
 

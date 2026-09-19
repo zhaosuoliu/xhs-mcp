@@ -12,6 +12,7 @@ import {
   XhsSearchFilters,
   PublishContentParams,
   PublishVideoParams,
+  LocationPoi,
   PublishResult,
   InteractionResult,
   CommentResult,
@@ -112,6 +113,10 @@ export class XhsClient {
 
   async publishVideo(params: PublishVideoParams): Promise<PublishResult> {
     return await this.browserClient.publishVideo(params);
+  }
+
+  async searchLocation(keyword: string, size?: number): Promise<LocationPoi[]> {
+    return await this.browserClient.searchLocation(keyword, size);
   }
 
   // New methods for interactions

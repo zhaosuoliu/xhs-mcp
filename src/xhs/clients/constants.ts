@@ -220,4 +220,6 @@ export const LOGIN_STATUS_SELECTOR = '.main-container .user .link-wrapper .chann
 export const URLS = {
   EXPLORE: 'https://www.xiaohongshu.com/explore',
   PUBLISH: 'https://creator.xiaohongshu.com/publish/publish?source=official',
+  // 创作平台发布页地点联想接口：仅验登录态 cookie，无需 x-s 签名
+  POI_SEARCH: 'https://edith.xiaohongshu.com/web_api/sns/v1/local/poi/creator/search',
 } as const;

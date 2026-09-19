@@ -52,6 +52,7 @@ import {
   XhsUserInfo,
   PublishContentParams,
   PublishVideoParams,
+  LocationPoi,
   PublishResult,
   InteractionResult,
   CommentResult,
@@ -194,6 +195,13 @@ export class BrowserClient {
    */
   async publishVideo(params: PublishVideoParams): Promise<PublishResult> {
     return this.publishService.publishVideo(params);
+  }
+
+  /**
+   * Search location suggestions (official POI API)
+   */
+  async searchLocation(keyword: string, size?: number): Promise<LocationPoi[]> {
+    return this.publishService.searchLocation(keyword, size);
   }
 
   // ============ Interact Methods ============

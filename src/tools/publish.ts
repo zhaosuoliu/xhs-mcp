@@ -47,6 +47,10 @@ export const publishTools: Tool[] = [
           type: 'string',
           description: 'Optional location keyword to attach (e.g. 国泰百货(天通苑店))',
         },
+        locationAddress: {
+          type: 'string',
+          description: 'Optional location address (from xhs_search_location) to disambiguate same-name POIs',
+        },
         account: {
           type: 'string',
           description: 'Account name or ID to use for publishing',
@@ -60,6 +64,29 @@ export const publishTools: Tool[] = [
         },
       },
       required: ['title', 'content', 'images'],
+    },
+  },
+  {
+    name: 'xhs_search_location',
+    description:
+      'Search location (POI) suggestions for publishing, identical to the official publish page dropdown. Returns name/address/fullAddress/cityName/poiId. Requires login.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keyword: {
+          type: 'string',
+          description: 'Location keyword, e.g. 国泰',
+        },
+        size: {
+          type: 'number',
+          description: 'Max results (default 20)',
+        },
+        account: {
+          type: 'string',
+          description: 'Account name or ID to use',
+        },
+      },
+      required: ['keyword'],
     },
   },
   {
@@ -98,6 +125,10 @@ export const publishTools: Tool[] = [
           type: 'string',
           description: 'Optional location keyword to attach (e.g. 国泰百货(天通苑店))',
         },
+        locationAddress: {
+          type: 'string',
+          description: 'Optional location address (from xhs_search_location) to disambiguate same-name POIs',
+        },
         account: {
           type: 'string',
           description: 'Account name or ID to use for publishing',
@@ -135,6 +166,7 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
           tags: z.array(z.string()).optional(),
           scheduleTime: z.string().optional(),
           location: z.string().optional(),
+          locationAddress: z.string().optional(),
           account: z.string().optional(),
           accounts: z.union([z.array(z.string()), z.literal('all')]).optional(),
         })
@@ -158,6 +190,7 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
             tags: params.tags,
             scheduleTime: params.scheduleTime,
             location: params.location,
+            locationAddress: params.locationAddress,
           });
 
           // Record in database if successful
@@ -203,6 +236,7 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
           tags: z.array(z.string()).optional(),
           scheduleTime: z.string().optional(),
           location: z.string().optional(),
+          locationAddress: z.string().optional(),
           account: z.string().optional(),
           accounts: z.union([z.array(z.string()), z.literal('all')]).optional(),
         })
@@ -227,6 +261,7 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
             tags: params.tags,
             scheduleTime: params.scheduleTime,
             location: params.location,
+            locationAddress: params.locationAddress,
           });
 
           // Record in database if successful
@@ -259,6 +294,38 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
 
       return {
         content: [{ type: 'text', text: JSON.stringify(results, null, 2) }],
+      };
+    }
+
+    case 'xhs_search_location': {
+      const params = z
+        .object({
+          keyword: z.string().min(1),
+          size: z.number().optional(),
+          account: z.string().optional(),
+        })
+        .parse(args);
+
+      const results = await executeWithMultipleAccounts(
+        pool,
+        db,
+        { account: params.account },
+        'search_location',
+        async (ctx) => {
+          return await ctx.client.searchLocation(params.keyword, params.size);
+        },
+        { logParams: { keyword: params.keyword } },
+      );
+
+      const r = results[0];
+      if (!r.success) {
+        return {
+          content: [{ type: 'text', text: `Location search failed: ${r.error}` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ count: r.result!.length, pois: r.result }, null, 2) }],
       };
     }
 

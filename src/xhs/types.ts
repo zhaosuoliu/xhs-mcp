@@ -266,6 +266,8 @@ export interface PublishContentParams {
   /** If true, save as draft instead of publishing */
   /** 可选：发布时添加的地点关键词 */
   location?: string;
+  /** 可选：地点地址（配合 location 精确匹配联想项，避免同名地点选错） */
+  locationAddress?: string;
 }
 
 /**
@@ -287,6 +289,24 @@ export interface PublishVideoParams {
   /** If true, save as draft instead of publishing */
   /** 可选：发布时添加的地点关键词 */
   location?: string;
+  /** 可选：地点地址（配合 location 精确匹配联想项，避免同名地点选错） */
+  locationAddress?: string;
+}
+
+/**
+ * 地点联想候选（来自创作平台官方 POI 搜索接口）
+ */
+export interface LocationPoi {
+  /** 地点名称，如 国泰百货(天通苑店) */
+  name: string;
+  /** 简短地址 */
+  address: string;
+  /** 完整地址（含省市区） */
+  fullAddress: string;
+  /** 城市名 */
+  cityName: string;
+  /** 小红书 POI ID */
+  poiId: string;
 }
 
 /**
