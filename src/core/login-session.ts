@@ -239,14 +239,23 @@ export class LoginSessionManager {
       false,
     );
 
-    if (!loginData?.qrcode) {
-      await browser.close();
-      throw new Error('Failed to extract QR code data from page state.');
+    let qrCodeContent = '';
+    let qrCodeUrl = '';
+    if (loginData?.qrcode) {
+      qrCodeContent = `xhsdiscover://qrcode/login?qr_code=${loginData.qrcode}`;
+      qrCodeUrl = this.generateQrCodeUrl(qrCodeContent);
+      log.info('Generated QR code URL from page state');
+    } else {
+      // 有头模式下 __INITIAL_STATE__ 可能不含 qrcodeInfo：直接取页面渲染出的二维码图片（data URI）
+      qrCodeUrl = await page
+        .$eval(QR_CODE_SELECTOR, (el) => (el as HTMLImageElement).src || '')
+        .catch(() => '');
+      if (!qrCodeUrl) {
+        await browser.close();
+        throw new Error('Failed to extract QR code data from page state.');
+      }
+      log.info('QR code taken from rendered image element');
     }
-
-    const qrCodeContent = `xhsdiscover://qrcode/login?qr_code=${loginData.qrcode}`;
-    const qrCodeUrl = this.generateQrCodeUrl(qrCodeContent);
-    log.info('Generated QR code URL from page state');
 
     const now = new Date();
     const session: LoginSession = {
