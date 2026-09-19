@@ -222,9 +222,9 @@ export class PublishService {
         log.info('Tags added');
       }
 
-      // 添加地点（可选）
-      if (params.location) {
-        await this.addLocation(page, params.location);
+      // 添加地点：用户指定了地点则必须成功，失败中止发布
+      if (params.location && !(await this.addLocation(page, params.location))) {
+        return { success: false, error: `添加地点"${params.location}"失败，已中止发布` };
       }
 
       // Handle scheduled publish
@@ -284,15 +284,16 @@ export class PublishService {
   }
 
   /**
-   * 添加地点（尽力而为：任何一步失败只记日志，不影响发布）。
+   * 添加地点。用户指定了地点就必须成功，否则发布应中止（调用方负责判断返回值）。
    * 点击"添加地点"下拉 → 输入关键词 → 选第一个匹配的联想项。
    */
-  private async addLocation(page: Page, location: string): Promise<void> {
+  private async addLocation(page: Page, location: string): Promise<boolean> {
     try {
       const trigger = await page.$('div:has-text("添加地点") input, :text("添加地点")');
       if (!trigger) {
         log.warn('addLocation: trigger not found');
-        return;
+        await this.captureLocationDebug(page);
+        return false;
       }
       await trigger.click();
       await sleep(1000);
@@ -307,23 +308,29 @@ export class PublishService {
           await c.click();
           await sleep(800);
           log.info('addLocation: selected', { text: t.slice(0, 50) });
-          return;
+          return true;
         }
       }
-      log.warn('addLocation: no suggestion matched, skipping', { location });
-      try {
-        const fs = await import('fs');
-        const path = await import('path');
-        const dir = path.join(config.data.dir, 'debug');
-        fs.mkdirSync(dir, { recursive: true });
-        await page.screenshot({ path: path.join(dir, `location-${Date.now()}.png`) });
-      } catch {
-        // 截图失败忽略
-      }
-      await page.keyboard.press('Escape');
-      await sleep(300);
+      log.warn('addLocation: no suggestion matched', { location });
+      await this.captureLocationDebug(page);
+      return false;
     } catch (e) {
       log.warn('addLocation failed', { error: e instanceof Error ? e.message : String(e) });
+      await this.captureLocationDebug(page);
+      return false;
+    }
+  }
+
+  /** 地点选择失败时截图到 debug 目录，便于排查联想面板结构 */
+  private async captureLocationDebug(page: Page): Promise<void> {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const dir = path.join(config.data.dir, 'debug');
+      fs.mkdirSync(dir, { recursive: true });
+      await page.screenshot({ path: path.join(dir, `location-${Date.now()}.png`) });
+    } catch {
+      // 截图失败忽略
     }
   }
 
@@ -590,9 +597,9 @@ export class PublishService {
         }
       }
 
-      // 添加地点（可选）
-      if (params.location) {
-        await this.addLocation(page, params.location);
+      // 添加地点：用户指定了地点则必须成功，失败中止发布
+      if (params.location && !(await this.addLocation(page, params.location))) {
+        return { success: false, error: `添加地点"${params.location}"失败，已中止发布` };
       }
 
       // 点击发布
