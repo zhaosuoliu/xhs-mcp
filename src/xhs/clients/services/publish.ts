@@ -222,6 +222,11 @@ export class PublishService {
         log.info('Tags added');
       }
 
+      // 添加地点（可选）
+      if (params.location) {
+        await this.addLocation(page, params.location);
+      }
+
       // Handle scheduled publish
       if (params.scheduleTime) {
         log.debug('Setting schedule time', { time: params.scheduleTime });
@@ -275,6 +280,50 @@ export class PublishService {
       await sleep(2000);
       await page.close();
       log.debug('Browser page closed');
+    }
+  }
+
+  /**
+   * 添加地点（尽力而为：任何一步失败只记日志，不影响发布）。
+   * 点击"添加地点"下拉 → 输入关键词 → 选第一个匹配的联想项。
+   */
+  private async addLocation(page: Page, location: string): Promise<void> {
+    try {
+      const trigger = await page.$('div:has-text("添加地点") input, :text("添加地点")');
+      if (!trigger) {
+        log.warn('addLocation: trigger not found');
+        return;
+      }
+      await trigger.click();
+      await sleep(1000);
+      await page.keyboard.type(location);
+      await sleep(2500);
+      // 联想项：取包含关键词首段、且不是触发器本身的可点击项
+      const key = location.split(/[（(]/)[0];
+      const candidates = await page.$$(`div[class*="option"]:has-text("${key}"), li:has-text("${key}"), div[class*="item"]:has-text("${key}")`);
+      for (const c of candidates) {
+        const t = ((await c.textContent()) ?? '').trim();
+        if (t && t.length < 80 && t.includes(key) && !t.includes('添加地点')) {
+          await c.click();
+          await sleep(800);
+          log.info('addLocation: selected', { text: t.slice(0, 50) });
+          return;
+        }
+      }
+      log.warn('addLocation: no suggestion matched, skipping', { location });
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const dir = path.join(config.data.dir, 'debug');
+        fs.mkdirSync(dir, { recursive: true });
+        await page.screenshot({ path: path.join(dir, `location-${Date.now()}.png`) });
+      } catch {
+        // 截图失败忽略
+      }
+      await page.keyboard.press('Escape');
+      await sleep(300);
+    } catch (e) {
+      log.warn('addLocation failed', { error: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -539,6 +588,11 @@ export class PublishService {
           }
           await sleep(300);
         }
+      }
+
+      // 添加地点（可选）
+      if (params.location) {
+        await this.addLocation(page, params.location);
       }
 
       // 点击发布

@@ -23,6 +23,31 @@ export class ContentService {
    * @param xsecToken - Security token from search results (required for reliable access)
    * @returns Note details or null if not found
    */
+  /**
+   * 提取视频播放地址：新版数据在 video.mediaV2（内嵌 JSON 字符串）里，
+   * 结构化解析失败时用正则兜底取第一个 stream mp4 直链（h264 优先）。
+   */
+  private extractVideo(video: any): { url: string; duration: number } {
+    let url = video.media?.stream?.h264?.[0]?.masterUrl || video.url || '';
+    let duration = video.duration || video.capa?.duration || 0;
+    if (!url && typeof video.mediaV2 === 'string') {
+      try {
+        const m2 = JSON.parse(video.mediaV2);
+        const stream = m2?.stream || m2?.video?.stream || {};
+        const cand = stream.h264?.[0] || stream.h265?.[0] || stream.av1?.[0];
+        url = cand?.master_url || cand?.masterUrl || '';
+        duration = duration || m2?.video?.duration || 0;
+      } catch {
+        // mediaV2 解析失败走正则兜底
+      }
+      if (!url) {
+        const m = video.mediaV2.match(/https?:[^"]+?stream[^"]+?\.mp4[^"]*/);
+        if (m) url = m[0];
+      }
+    }
+    return { url, duration };
+  }
+
   async getNote(noteId: string, xsecToken?: string): Promise<XhsNote | null> {
     await this.ctx.ensureContext();
     const page = await this.ctx.newPage();
@@ -103,12 +128,7 @@ export class ContentService {
           width: img.width,
           height: img.height,
         })),
-        video: note.video
-          ? {
-              url: note.video.media?.stream?.h264?.[0]?.masterUrl || note.video.url || '',
-              duration: note.video.duration || 0,
-            }
-          : undefined,
+        video: note.video ? this.extractVideo(note.video) : undefined,
         tags: note.tagList?.map((t: any) => t.name) || [],
         stats: {
           likedCount: note.interactInfo?.likedCount || note.interact_info?.liked_count || '0',

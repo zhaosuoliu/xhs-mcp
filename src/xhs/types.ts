@@ -264,6 +264,8 @@ export interface PublishContentParams {
   /** Optional scheduled publish time (ISO 8601) */
   scheduleTime?: string;
   /** If true, save as draft instead of publishing */
+  /** 可选：发布时添加的地点关键词 */
+  location?: string;
 }
 
 /**
@@ -283,6 +285,8 @@ export interface PublishVideoParams {
   /** Optional scheduled publish time (ISO 8601) */
   scheduleTime?: string;
   /** If true, save as draft instead of publishing */
+  /** 可选：发布时添加的地点关键词 */
+  location?: string;
 }
 
 /**

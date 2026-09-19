@@ -43,6 +43,10 @@ export const publishTools: Tool[] = [
           type: 'string',
           description: 'Optional scheduled publish time (ISO 8601 format). If not provided, publishes immediately.',
         },
+        location: {
+          type: 'string',
+          description: 'Optional location keyword to attach (e.g. 国泰百货(天通苑店))',
+        },
         account: {
           type: 'string',
           description: 'Account name or ID to use for publishing',
@@ -90,6 +94,10 @@ export const publishTools: Tool[] = [
           type: 'string',
           description: 'Optional scheduled publish time (ISO 8601 format). If not provided, publishes immediately.',
         },
+        location: {
+          type: 'string',
+          description: 'Optional location keyword to attach (e.g. 国泰百货(天通苑店))',
+        },
         account: {
           type: 'string',
           description: 'Account name or ID to use for publishing',
@@ -126,6 +134,7 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
           images: z.array(z.string()).min(1),
           tags: z.array(z.string()).optional(),
           scheduleTime: z.string().optional(),
+          location: z.string().optional(),
           account: z.string().optional(),
           accounts: z.union([z.array(z.string()), z.literal('all')]).optional(),
         })
@@ -148,6 +157,7 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
             images: params.images,
             tags: params.tags,
             scheduleTime: params.scheduleTime,
+            location: params.location,
           });
 
           // Record in database if successful
@@ -192,6 +202,7 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
           coverPath: z.string().optional(),
           tags: z.array(z.string()).optional(),
           scheduleTime: z.string().optional(),
+          location: z.string().optional(),
           account: z.string().optional(),
           accounts: z.union([z.array(z.string()), z.literal('all')]).optional(),
         })
@@ -215,6 +226,7 @@ export async function handlePublishTools(name: string, args: any, pool: AccountP
             coverPath: params.coverPath,
             tags: params.tags,
             scheduleTime: params.scheduleTime,
+            location: params.location,
           });
 
           // Record in database if successful
