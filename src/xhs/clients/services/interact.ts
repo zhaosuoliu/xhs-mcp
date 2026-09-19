@@ -185,6 +185,33 @@ export class InteractService {
    * @param content - Comment content
    * @returns Comment result
    */
+  /** 评论/回复未确认时采集现场：URL、页面文本、截图 */
+  private async captureCommentFailure(page: import('patchright').Page, kind: string): Promise<string> {
+    let detail = '';
+    try {
+      const info = await page.evaluate(() => ({
+        url: location.href,
+        text: document.body.innerText.replace(/\s+/g, ' ').slice(0, 300),
+      }));
+      detail = ` url=${info.url} text=${info.text}`;
+    } catch {
+      // 忽略
+    }
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      const dir = path.join(process.env.XHS_MCP_DATA_DIR || path.join(os.homedir(), '.xhs-mcp'), 'debug');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${kind}-${Date.now()}.png`);
+      await page.screenshot({ path: file });
+      detail += ` screenshot=${file}`;
+    } catch {
+      // 忽略
+    }
+    return detail;
+  }
+
   async postComment(noteId: string, xsecToken: string, content: string): Promise<CommentResult> {
     await this.ctx.ensureContext();
     const page = await this.ctx.newPage();
@@ -234,7 +261,8 @@ export class InteractService {
         if (commentOk) break;
       }
       if (!commentOk) {
-        return { success: false, error: 'Comment not confirmed (no success toast)' };
+        const detail = await this.captureCommentFailure(page, 'comment');
+        return { success: false, error: `Comment not confirmed (no success toast).${detail}` };
       }
 
       return { success: true };
@@ -323,7 +351,8 @@ export class InteractService {
         if (replyOk) break;
       }
       if (!replyOk) {
-        return { success: false, error: 'Reply not confirmed (no success toast)' };
+        const detail = await this.captureCommentFailure(page, 'reply');
+        return { success: false, error: `Reply not confirmed (no success toast).${detail}` };
       }
 
       return { success: true };
