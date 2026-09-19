@@ -4,12 +4,12 @@
  * @module xhs/clients/services/publish
  */
 
-import { chromium, Page } from 'patchright';
+import { Page } from 'patchright';
 import { PublishContentParams, PublishVideoParams, PublishResult } from '../../types.js';
 import { sleep, resolveImagePaths, isHttpUrl } from '../../utils/index.js';
 import { config } from '../../../core/config.js';
 import { BrowserContextManager, log } from '../context.js';
-import { BROWSER_ARGS, TIMEOUTS, PUBLISH_SELECTORS, URLS } from '../constants.js';
+import { TIMEOUTS, PUBLISH_SELECTORS, URLS } from '../constants.js';
 
 /**
  * Publish service - handles content publishing
@@ -49,30 +49,8 @@ export class PublishService {
       }
     }
 
-    if (this.ctx.browser) {
-      log.debug('Closing existing browser instance');
-      await this.ctx.browser.close();
-    }
-
-    const launchOptions: any = {
-      headless: config.browser.headless, // 发布操作建议使用可见模式 (XHS_MCP_HEADLESS=false)
-      channel: 'chrome',
-      args: BROWSER_ARGS,
-    };
-
-    if (this.ctx.options.proxy) {
-      launchOptions.proxy = { server: this.ctx.options.proxy };
-    }
-
-    log.debug('Launching browser for publishing...');
-    this.ctx.browser = await chromium.launch(launchOptions);
-
-    this.ctx.context = await this.ctx.browser.newContext({
-      storageState: this.ctx.options.state,
-      viewport: { width: 1920, height: 1080 },
-    });
-
-    const page = await this.ctx.context.newPage();
+    // 使用账号的持久化上下文（稳定指纹），不再每次发布另起浏览器
+    const page = await this.ctx.newPage();
 
     try {
       // Navigate to creator publish page (matching Go project URL)
@@ -496,28 +474,8 @@ export class PublishService {
       return { success: false, error: 'Not logged in. Please use xhs_login first.' };
     }
 
-    if (this.ctx.browser) {
-      await this.ctx.browser.close();
-    }
-
-    const launchOptions: any = {
-      headless: config.browser.headless, // 可通过 XHS_MCP_HEADLESS 控制
-      channel: 'chrome',
-      args: BROWSER_ARGS,
-    };
-
-    if (this.ctx.options.proxy) {
-      launchOptions.proxy = { server: this.ctx.options.proxy };
-    }
-
-    this.ctx.browser = await chromium.launch(launchOptions);
-
-    this.ctx.context = await this.ctx.browser.newContext({
-      storageState: this.ctx.options.state,
-      viewport: { width: 1920, height: 1080 },
-    });
-
-    const page = await this.ctx.context.newPage();
+    // 使用账号的持久化上下文（稳定指纹），不再每次发布另起浏览器
+    const page = await this.ctx.newPage();
 
     try {
       await page.goto('https://creator.xiaohongshu.com/publish/publish', {

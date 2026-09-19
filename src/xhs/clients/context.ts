@@ -54,47 +54,56 @@ export class BrowserContextManager {
    * Defaults to config.browser.headless (controlled by XHS_MCP_HEADLESS env)
    */
   async init(headless = config.browser.headless): Promise<void> {
+    // 每个账号一个持久化浏览器档案：指纹/localStorage/缓存跨操作与重启保持稳定，
+    // 避免"同一 Cookie 每次出现在全新设备上"这一高危风控信号
+    const fs = await import('fs');
+    const path = await import('path');
+    const profileDir = path.join(config.data.dir, 'profiles', this.options.accountId || 'default');
+    fs.mkdirSync(profileDir, { recursive: true });
+
     const launchOptions: any = {
       headless,
       channel: 'chrome',
       args: BROWSER_ARGS,
+      viewport: { width: 1920, height: 1080 },
     };
 
     if (this.options.proxy) {
       launchOptions.proxy = { server: this.options.proxy };
     }
 
-    this.browser = await chromium.launch(launchOptions);
+    this.context = await chromium.launchPersistentContext(profileDir, launchOptions);
+    this.browser = this.context.browser();
 
-    const contextOptions: any = {
-      viewport: { width: 1920, height: 1080 },
-    };
-
-    if (this.options.state) {
-      contextOptions.storageState = this.options.state;
+    // 数据库中的登录态是权威来源：每次启动把 cookies 种入档案（重登后也能同步）
+    if (this.options.state?.cookies?.length) {
+      await this.context.addCookies(this.options.state.cookies);
     }
 
-    this.context = await this.browser.newContext(contextOptions);
-
-    await this.context.addCookies([
-      {
-        name: 'webId',
-        value: generateWebId(),
-        domain: '.xiaohongshu.com',
-        path: '/',
-      },
-    ]);
+    // webId 是设备标识：仅在档案里还没有时生成一次，之后永久复用
+    const existing = await this.context.cookies('https://www.xiaohongshu.com');
+    if (!existing.some((c) => c.name === 'webId')) {
+      await this.context.addCookies([
+        {
+          name: 'webId',
+          value: generateWebId(),
+          domain: '.xiaohongshu.com',
+          path: '/',
+        },
+      ]);
+    }
   }
 
   /**
    * Close browser and cleanup resources
    */
   async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-      this.context = null;
+    // 持久化上下文没有独立的 browser 句柄，关 context 即可
+    if (this.context) {
+      await this.context.close().catch(() => {});
     }
+    this.browser = null;
+    this.context = null;
   }
 
   /**
