@@ -20,6 +20,7 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 ENV XHS_MCP_HEADLESS=false
+ENV TZ=Asia/Shanghai
 ENV XHS_MCP_DATA_DIR=/root/.xhs-mcp
 # @google/genai 在模块加载时校验 key，缺失会直接崩溃；不使用 AI 功能时占位即可
 ENV GEMINI_API_KEY=unused

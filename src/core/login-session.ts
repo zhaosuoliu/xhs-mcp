@@ -6,10 +6,10 @@
 
 import { chromium, Browser, BrowserContext, Page } from 'patchright';
 import { LoginUserInfo, FullUserProfile } from '../xhs/types.js';
-import { sleep, generateWebId } from '../xhs/utils/index.js';
+import { sleep, generateWebId, toProxyOption } from '../xhs/utils/index.js';
 import { createLogger } from './logger.js';
 import { config } from './config.js';
-import { BROWSER_ARGS, QR_CODE_SELECTOR, LOGIN_STATUS_SELECTOR, URLS } from '../xhs/clients/constants.js';
+import { BROWSER_ARGS, BROWSER_LOCALE, QR_CODE_SELECTOR, LOGIN_STATUS_SELECTOR, URLS } from '../xhs/clients/constants.js';
 
 const log = createLogger('login-session');
 
@@ -161,13 +161,14 @@ export class LoginSessionManager {
     };
 
     if (proxy) {
-      launchOptions.proxy = { server: proxy };
+      launchOptions.proxy = toProxyOption(proxy);
     }
 
     const browser = await chromium.launch(launchOptions);
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },
+      ...BROWSER_LOCALE,
     });
 
     // Add webId cookie

@@ -32,6 +32,21 @@ export function generateWebId(): string {
 }
 
 /**
+ * Convert a proxy URL (optionally with user:pass@) into Playwright proxy options.
+ */
+export function toProxyOption(proxy: string): { server: string; username?: string; password?: string } {
+  const u = new URL(proxy);
+  const option: { server: string; username?: string; password?: string } = {
+    server: `${u.protocol}//${u.host}`,
+  };
+  if (u.username) {
+    option.username = decodeURIComponent(u.username);
+    option.password = decodeURIComponent(u.password);
+  }
+  return option;
+}
+
+/**
  * Generate a random number within a range.
  * @param min - Minimum value (inclusive)
  * @param max - Maximum value (exclusive)

@@ -6,10 +6,10 @@
 
 import { chromium, Browser, BrowserContext, Page } from 'patchright';
 import { LoginUserInfo, FullUserProfile } from '../types.js';
-import { generateWebId } from '../utils/index.js';
+import { generateWebId, toProxyOption } from '../utils/index.js';
 import { createLogger } from '../../core/logger.js';
 import { config } from '../../core/config.js';
-import { BROWSER_ARGS } from './constants.js';
+import { BROWSER_ARGS, BROWSER_LOCALE } from './constants.js';
 
 // Create logger for browser module
 export const log = createLogger('browser');
@@ -66,10 +66,11 @@ export class BrowserContextManager {
       channel: 'chrome',
       args: BROWSER_ARGS,
       viewport: { width: 1920, height: 1080 },
+      ...BROWSER_LOCALE,
     };
 
     if (this.options.proxy) {
-      launchOptions.proxy = { server: this.options.proxy };
+      launchOptions.proxy = toProxyOption(this.options.proxy);
     }
 
     this.context = await chromium.launchPersistentContext(profileDir, launchOptions);

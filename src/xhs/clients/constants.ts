@@ -21,7 +21,16 @@ export const BROWSER_ARGS = [
   '--hide-crash-restore-bubble', // 隐藏崩溃恢复气泡
   '--noerrdialogs', // 禁用错误对话框
   '--deny-permission-prompts', // 拒绝所有权限请求（地理位置等）
+  '--force-webrtc-ip-handling-policy=disable_non_proxied_udp', // 走代理时禁止 WebRTC 泄露真实 IP
 ];
+
+/**
+ * 浏览器地区设置：与国内真实用户一致，避免 IP 在国内而时区/语言为 UTC/英文
+ */
+export const BROWSER_LOCALE = {
+  locale: 'zh-CN',
+  timezoneId: 'Asia/Shanghai',
+};
 
 /**
  * 超时时间常量（毫秒）
